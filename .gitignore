@@ -205,3 +205,29 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+<<<<<<< HEAD
+=======
+
+# =========================
+# MLOps Project Specific
+# =========================
+
+# Data
+data/raw/
+data/processed/
+
+# MLflow
+mlruns/
+
+# Model artifacts
+*.pkl
+*.joblib
+*.onnx
+*.pt
+
+# Logs
+logs/
+
+#Notebooks
+notebooks/
+>>>>>>> 8ee8d0d (Intial Commit)
