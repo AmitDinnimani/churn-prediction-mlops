@@ -1,0 +1,29 @@
+# Makefile for Python project automation
+
+# Install dependencies & pre-commit hooks
+install:
+	pip install -r requirements.txt
+	pre-commit autoupdate
+	pre-commit install
+
+# Format code automatically
+format:
+	black .
+	isort .
+
+# Lint code and auto-fix flake8 errors using autoflake (optional)
+lint:
+	flake8 .
+	# optionally: autoflake --in-place --remove-unused-variables -r .
+
+# Run tests
+test:
+	pytest -v
+
+# Clean pyc files and __pycache__
+clean:
+	find . -name "*.pyc" -delete
+	find . -name "__pycache__" -delete
+
+# Full workflow: format → lint → test
+all: format lint test
