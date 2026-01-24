@@ -1,13 +1,10 @@
 import pandas as pd
 import numpy as np
+from src.utils.logger import get_logger
 
-logger = pd.get_logger(__name__)
+logger = get_logger(__name__)
 
 RAW_DATA_COLUMNS = ['age', 'gender', 'security_no', 'region_category','membership_category', 'joining_date', 'joined_through_referral','referral_id', 'preferred_offer_types', 'medium_of_operation','internet_option', 'last_visit_time', 'days_since_last_login','avg_time_spent', 'avg_transaction_value', 'avg_frequency_login_days','points_in_wallet', 'used_special_discount','offer_application_preference', 'past_complaint', 'complaint_status','feedback', 'churn_risk_score']
-
-PROCCESSED_DATA_COLUMNS = ['age', 'days_since_last_login', 'avg_time_spent', 'avg_transaction_value', 'avg_frequency_login_days', 'points_in_wallet', 'customer_tenure_days', 'login_gap_ratio', 'engagement_score', 'value_per_login', 'wallet_utilization', 'gender_F', 'gender_M', 'gender_Unknown', 'region_category_City', 'region_category_Town', 'region_category_Unknown', 'region_category_Village', 'membership_category_Basic Membership', 'membership_category_Gold Membership', 'membership_category_No Membership', 'membership_category_Platinum Membership', 'membership_category_Premium Membership', 'membership_category_Silver Membership', 'joined_through_referral_?', 'joined_through_referral_No', 'joined_through_referral_Yes', 'preferred_offer_types_Credit/Debit Card Offers', 'preferred_offer_types_Gift Vouchers/Coupons', 'preferred_offer_types_Without Offers', 'medium_of_operation_?', 'medium_of_operation_Both', 'medium_of_operation_Desktop', 'medium_of_operation_Smartphone', 'internet_option_Fiber_Optic', 'internet_option_Mobile_Data', 'internet_option_Wi-Fi', 'used_special_discount_No', 'used_special_discount_Yes', 'offer_application_preference_No', 'offer_application_preference_Yes', 'past_complaint_No', 'past_complaint_Yes', 'complaint_status_No Information Available', 'complaint_status_Not Applicable', 'complaint_status_Solved', 'complaint_status_Solved in Follow-up', 'complaint_status_Unsolved', 'feedback_No reason specified', 'feedback_Poor Customer Service', 'feedback_Poor Product Quality', 'feedback_Poor Website', 'feedback_Products always in Stock', 'feedback_Quality Customer Care', 'feedback_Reasonable Price', 'feedback_Too many ads', 'feedback_User Friendly Website', 'churn_risk_score']
-
-
 
 def raw_data_validation(df: pd.DataFrame):
     """
@@ -24,10 +21,9 @@ def raw_data_validation(df: pd.DataFrame):
         for col in RAW_DATA_COLUMNS:
             if col not in df.columns:
                 report['Missing Column'].append(col)
-
-        for col in RAW_DATA_COLUMNS:
-            if df[col].isnull().all():
-                report['Missing Values'].append(f'{col} has {df[col].isnull().sum()} values missing.')
+            else:
+                if df[col].isnull().any():
+                    report['Missing Values'].append(f'{col} has {df[col].isnull().sum()} values missing.')
 
         if (df['age'] < 0).any():
             report['Invalid Values'].append('age has negative values.')
@@ -73,24 +69,19 @@ def processed_data_validation(df: pd.DataFrame):
     Returns:
         bool: True if validation passes, False otherwise.
     """
-    report = {'Missing Column': [], 'Missing Values': [], 'Invalid Values': []}
     try:
-        for col in PROCCESSED_DATA_COLUMNS:
-            if col not in df.columns:
-                report['Missing Column'].append(col)
+        report = {'Missing Values': [], 'Invalid Values': []}
 
-            if df[col].isnull().all():
-                report['Missing Values'].append(f'{col} has {df[col].isnull().sum()} values missing.')
+        for col in df.columns:
+            if df[col].isnull().any():
+                report['Missing Values'].append(col)
 
             if not np.issubdtype(df[col].dtype, np.number):
-                report['Invalid Values'].append(f'{col} has non-numeric values.')
-        
-            if np.isinf(df[col]).any():
-                report['Invalid Values'].append(f'{col} has infinite values.')
+                report['Invalid Values'].append(f'{col} non-numeric')
 
-            if (df[col].nunique() <= 1) and col != 'churn_risk_score':
-                report['Invalid Values'].append(f'{col} has constant values.')
-        
+            if pd.api.types.is_numeric_dtype(df[col]) and np.isinf(df[col]).any():
+                report['Invalid Values'].append(f'{col} infinite')
+            
         valid = all(len(v) == 0 for v in report.values())
         logger.info("Processed data validation completed.")
         return valid,report

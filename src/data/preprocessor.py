@@ -123,13 +123,9 @@ def preprocess_df(df):
     
 
     logger.info("Starting preprocessing pipeline.")
-    numeric_features = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_features = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    
     try:
-        basic_steps = Pipeline([
-            ('basic_preprocessor', BasicPreprocessor())
-        ])
-
+        
         numeric_pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='median')),
             ('scaler', StandardScaler())
@@ -142,11 +138,18 @@ def preprocess_df(df):
         ])
         logger.info("Categorical pipeline created.")
 
-        preprocessor = ColumnTransformer([
-            ('basic', basic_steps, df.columns.tolist()),
-            ('num', numeric_pipeline, numeric_features),
-            ('cat', categorical_pipeline, categorical_features)
+        preprocessor = Pipeline([
+            ('basic', BasicPreprocessor()),
+            ('columns', ColumnTransformer(
+                transformers=[
+                    ('num', numeric_pipeline,
+                    lambda X: X.select_dtypes(include=['int64','float64']).columns),
+                    ('cat', categorical_pipeline,
+                    lambda X: X.select_dtypes(include=['object','category']).columns)
+                ]
+            ))
         ])
+
         logger.info("Preprocessing pipelines created successfully.")
     except Exception as e:
         logger.error(f"Error in creating pipelines: {e}")
