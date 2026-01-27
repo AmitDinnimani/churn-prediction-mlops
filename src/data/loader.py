@@ -1,5 +1,7 @@
 import pandas as pd
-from src.utils.logger import get_logger, configure_logging
+
+from src.utils.logger import get_logger
+
 
 def load_data(file_path: str) -> pd.DataFrame:
     """
@@ -21,6 +23,8 @@ def load_data(file_path: str) -> pd.DataFrame:
     elif df.empty:
         logger.warning(f"Loaded empty DataFrame from {file_path}")
     else:
-        logger.info(f"Data loaded successfully from {file_path}: {df.shape[0]} rows, {df.shape[1]} columns")
+        logger.info(
+            f"Data loaded successfully from {file_path}: {df.shape[0]} rows, {df.shape[1]} columns"
+        )
 
     return df

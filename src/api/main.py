@@ -1,3 +1,3 @@
-from src.utils.logger import get_logger, configure_logging
+from src.utils.logger import configure_logging
 
 configure_logging()

@@ -4,10 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 # Default log format (human-readable, production-safe)
-LOG_FORMAT = (
-    "%(asctime)s | %(levelname)s | %(name)s | "
-    "%(message)s"
-)
+LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | " "%(message)s"
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
