@@ -1,3 +1,5 @@
+import os
+
 import mlflow
 import mlflow.sklearn
 from sklearn.ensemble import RandomForestClassifier
@@ -14,8 +16,9 @@ from src.models.train import train_model
 from src.utils.config import DATA_PATH
 from src.utils.logger import get_logger
 
+mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+
 logger = get_logger(__name__)
-# ----------------
 
 TARGET = "churn_risk_score"
 TEST_SIZE = 0.2
@@ -27,64 +30,69 @@ models = {
     "xgboost": XGBClassifier(eval_metric="logloss"),
 }
 
-# ----------------
 
-df = load_data(DATA_PATH)
-is_raw_data_vaild, _ = raw_data_validation(df)
+def main():
+    # ----------------
+    df = load_data(DATA_PATH)
 
-if is_raw_data_vaild:
+    is_raw_data_valid, _ = raw_data_validation(df)
+
+    if not is_raw_data_valid:
+        logger.error("Raw Data Validation Failed")
+        raise ValueError("Raw Data Validation Failed")
+
+    logger.info("Raw Data Validation Passed")
     df = preprocess_df(df)
-    logger.info("Raw Data Vaildation Passed")
-else:
-    logger.error("Raw Data Validation Failed")
-    raise ValueError("Raw Data Validation Failed")
 
-is_processed_data_vaild, _ = processed_data_validation(df)
+    is_processed_data_valid, _ = processed_data_validation(df)
 
-if not is_processed_data_vaild:
-    logger.error("Processed Data Vaildation Failed")
-    raise ValueError("Processed Data Vaildation Failed")
-logger.info("Processed Data Vaildation Passed")
+    if not is_processed_data_valid:
+        logger.error("Processed Data Validation Failed")
+        raise ValueError("Processed Data Validation Failed")
 
-# ----------------
+    logger.info("Processed Data Validation Passed")
 
-X = df.drop(columns=[TARGET])
-Y = df[TARGET]
+    # ----------------
+    X = df.drop(columns=[TARGET])
+    y = df[TARGET]
 
-x_train, x_test, y_train, y_test = train_test_split(
-    X, Y, test_size=TEST_SIZE, random_state=RANDOM_STATE
-)
-logger.info("Train Test Split Done")
+    x_train, x_test, y_train, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
+    )
 
-# ----------------
+    logger.info("Train Test Split Done")
 
-best_auc = -1
-best_run_id = None
-best_model_name = None
+    # ----------------
+    best_auc = -1
+    best_run_id = None
+    best_model_name = None
 
-# ----------------
-for name, model in models.items():
-    logger.info(f"Starting training for {name}")
-    with mlflow.start_run(run_name=name) as run:
-        trained_model = train_model(model, x_train, y_train)
+    for name, model in models.items():
+        logger.info(f"Starting training for {name}")
 
-        y_pred = trained_model.predict(x_test)
-        y_proba = trained_model.predict_proba(x_test)[:, 1]
-        metrics = evaluate_model(y_test, y_pred, y_proba)
+        with mlflow.start_run(run_name=name) as run:
+            trained_model = train_model(model, x_train, y_train)
 
-        mlflow.log_param("model_name", name)
-        mlflow.log_metrics(metrics)
-        mlflow.sklearn.log_model(trained_model, artifact_path="model")
+            y_pred = trained_model.predict(x_test)
+            y_proba = trained_model.predict_proba(x_test)[:, 1]
 
-        if metrics["roc_auc"] > best_auc:
-            best_auc = metrics["roc_auc"]
-            best_run_id = run.info.run_id
-            best_model_name = name
+            metrics = evaluate_model(y_test, y_pred, y_proba)
 
-        logger.info(f"Finished training {name} | Metrics: {metrics}")
+            mlflow.log_param("model_name", name)
+            mlflow.log_metrics(metrics)
+            mlflow.sklearn.log_model(trained_model, artifact_path="model")
 
-logger.info("All models trained and logged to MLflow successfully!")
+            if metrics["roc_auc"] > best_auc:
+                best_auc = metrics["roc_auc"]
+                best_run_id = run.info.run_id
+                best_model_name = name
 
-# ----------------
+            logger.info(f"Finished training {name} | Metrics: {metrics}")
 
-register_model(best_run_id, best_model_name, best_auc)
+    logger.info("All models trained and logged to MLflow successfully!")
+
+    register_model(best_run_id, best_model_name, best_auc)
+
+
+if __name__ == "__main__":
+    main()

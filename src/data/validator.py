@@ -65,9 +65,8 @@ def raw_data_validation(df: pd.DataFrame):
 
         try:
             pd.to_datetime(df["joining_date"], errors="raise")
-        except Exception as e:
+        except Exception:
             report["Invalid Values"].append("joining_date has invalid date format.")
-            raise (f"joining_date has invalid date format and Error: {e}")
 
         non_numeric = (
             pd.to_numeric(df["avg_frequency_login_days"], errors="coerce").isnull()
@@ -90,7 +89,7 @@ def raw_data_validation(df: pd.DataFrame):
         return is_vaild, report
     except Exception as e:
         logger.error(f"Error during raw data validation: {e}")
-        raise e
+        raise Exception(e)
 
 
 def processed_data_validation(df: pd.DataFrame):
@@ -122,4 +121,4 @@ def processed_data_validation(df: pd.DataFrame):
         return valid, report
     except Exception as e:
         logger.error(f"Error during processed data validation: {e}")
-        raise e
+        raise Exception(e)
