@@ -1,3 +1,20 @@
-FROM ghcr.io/mlflow/mlflow:v2.9.2
+FROM python:3.10-slim
 
-RUN pip install --no-cache-dir psycopg2-binary
+RUN pip install --no-cache-dir mlflow psycopg2-binary
+
+RUN mkdir -p /mlflow/artifacts
+
+COPY scripts/setup_mlflow.sh /mlflow_setup.sh
+RUN chmod +x /mlflow_setup.sh
+
+ENV MLFLOW_BACKEND_STORE_URI=postgresql://mlflow:mlflow123@postgres:5432/mlflow_db
+ENV MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+ENV MLFLOW_PORT=5000
+
+EXPOSE 5000
+
+CMD mlflow server \
+    --backend-store-uri $MLFLOW_BACKEND_STORE_URI \
+    --default-artifact-root $MLFLOW_ARTIFACT_ROOT \
+    --host 0.0.0.0 \
+    --port $MLFLOW_PORT

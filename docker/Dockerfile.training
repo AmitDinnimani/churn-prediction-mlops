@@ -2,16 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy code
 COPY src/ src/
 COPY scripts/ scripts/
 COPY requirements.txt .
 
-# Install deps
 RUN pip install --no-cache-dir -r requirements.txt mlflow scikit-learn xgboost pandas
 
-# Point MLflow to the mlflow container
 ENV MLFLOW_TRACKING_URI=http://mlflow:5000
 
-# Default command
 CMD ["python", "scripts/train_model.py"]
