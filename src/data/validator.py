@@ -64,8 +64,16 @@ def raw_data_validation(df: pd.DataFrame):
             )
 
         try:
-            pd.to_datetime(df["joining_date"], errors="raise")
-        except Exception:
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Parsing dates in .* format when dayfirst=False",
+                )
+                pd.to_datetime(df["joining_date"], errors="raise")
+        except Exception as e:
+            logger.error(f"Date validation error for joining_date: {e}")
             report["Invalid Values"].append("joining_date has invalid date format.")
 
         non_numeric = (

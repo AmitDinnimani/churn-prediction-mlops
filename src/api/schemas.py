@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -47,5 +46,4 @@ class ModelInfoResponse(BaseModel):
     stage: str = Field(..., example="Production")
     version: int = Field(..., example=2)
     run_id: str = Field(..., example="abcd1234")
-    registered_at: datetime
     roc_auc: float = Field(..., example=0.91)

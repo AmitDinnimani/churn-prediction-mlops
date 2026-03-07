@@ -40,8 +40,14 @@ def datetime_cols_conversion(df):
     """
     Convert datetime columns to appropriate format.
     """
-    df["joining_date"] = pd.to_datetime(df["joining_date"], errors="coerce")
-    df["last_visit_time"] = pd.to_datetime(df["last_visit_time"], errors="coerce")
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="Parsing dates in .* format when dayfirst=False"
+        )
+        df["joining_date"] = pd.to_datetime(df["joining_date"], errors="coerce")
+        df["last_visit_time"] = pd.to_datetime(df["last_visit_time"], errors="coerce")
 
     logger.info("Datetime columns converted successfully.")
 

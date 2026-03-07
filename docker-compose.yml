@@ -1,0 +1,105 @@
+# =============================================================================
+# docker-compose.yml - FIXED VERSION
+# =============================================================================
+# FIXES APPLIED:
+#
+# 1. DNS Rebinding Protection Fix (MAIN ISSUE)
+#    - Removed environment variables that don't work
+#    - MLflow server now starts with --host 0.0.0.0 flag in Dockerfile
+#    - This properly disables Host header validation
+#
+# 2. Healthcheck improvements
+#    - Postgres: uses pg_isready
+#    - MLflow: uses root endpoint /
+#    - Added proper start_period and retries
+#
+# 3. Service dependencies
+#    - All services wait for condition: service_healthy
+#    - Ensures proper startup order
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  postgres:
+    # ---------------------------------------------------------------------------
+    image: postgres:15
+    container_name: mlflow-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow123
+      POSTGRES_DB: mlflow_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U mlflow -d mlflow_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  mlflow:
+    # ---------------------------------------------------------------------------
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mlflow
+    container_name: mlflow-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    environment:
+      # Only keep essential environment variables
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow123
+      POSTGRES_DB: mlflow_db
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:5000/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  training:
+    # ---------------------------------------------------------------------------
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.training
+    container_name: training
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONPATH: /app
+
+  # ---------------------------------------------------------------------------
+  api:
+    # ---------------------------------------------------------------------------
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.inference
+    container_name: api-server
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONPATH: /app
+    restart: on-failure
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:

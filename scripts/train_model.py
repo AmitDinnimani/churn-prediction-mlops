@@ -1,4 +1,5 @@
 import os
+import time
 
 import mlflow
 import mlflow.sklearn
@@ -16,83 +17,134 @@ from src.models.train import train_model
 from src.utils.config import DATA_PATH
 from src.utils.logger import get_logger
 
-mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
-
 logger = get_logger(__name__)
 
-TARGET = "churn_risk_score"
-TEST_SIZE = 0.2
-RANDOM_STATE = 42
 
-models = {
-    "logistic_regression": LogisticRegression(),
-    "random_forest": RandomForestClassifier(),
-    "xgboost": XGBClassifier(eval_metric="logloss"),
-}
+class ChurnTrainingPipeline:
+    """
+    Enterprise-level training pipeline for Churn Prediction.
+    Handles data loading, validation, preprocessing, training, and registration.
+    """
 
+    def __init__(self, tracking_uri=None):
+        self.tracking_uri = tracking_uri or os.environ.get(
+            "MLFLOW_TRACKING_URI", "http://mlflow:5000"
+        )
+        self.target = "churn_risk_score"
+        self.test_size = 0.2
+        self.random_state = 42
+        self.models = {
+            "logistic_regression": LogisticRegression(max_iter=1000),
+            "random_forest": RandomForestClassifier(n_estimators=100, random_state=42),
+            "xgboost": XGBClassifier(eval_metric="logloss", random_state=42),
+        }
 
-def main():
-    # ----------------
-    df = load_data(DATA_PATH)
+    def setup_mlflow(self):
+        """Configure MLflow with retries."""
+        logger.info(f"Setting MLflow Tracking URI: {self.tracking_uri}")
+        mlflow.set_tracking_uri(self.tracking_uri)
+        # Verify connection
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                mlflow.search_experiments()
+                logger.info("Successfully connected to MLflow.")
+                return True
+            except Exception as e:
+                logger.warning(f"MLflow connection attempt {i+1} failed: {e}")
+                if i < max_retries - 1:
+                    time.sleep(5)
+        logger.error("Failed to connect to MLflow after multiple attempts.")
+        return False
 
-    is_raw_data_valid, _ = raw_data_validation(df)
+    def run(self):
+        """Execute the full training pipeline."""
+        start_time = time.time()
+        logger.info("Starting Churn Prediction Training Pipeline")
 
-    if not is_raw_data_valid:
-        logger.error("Raw Data Validation Failed")
-        raise ValueError("Raw Data Validation Failed")
+        try:
+            if not self.setup_mlflow():
+                raise ConnectionError("Could not initialize MLflow tracking.")
 
-    logger.info("Raw Data Validation Passed")
-    df = preprocess_df(df)
+            # 1. Load Data
+            df = load_data(DATA_PATH)
 
-    is_processed_data_valid, _ = processed_data_validation(df)
+            # 2. Raw Data Validation
+            is_valid, report = raw_data_validation(df)
+            if not is_valid:
+                logger.error(f"Raw data validation failed: {report}")
+                raise ValueError("Aborting pipeline due to invalid raw data.")
+            logger.info("Raw data validation passed.")
 
-    if not is_processed_data_valid:
-        logger.error("Processed Data Validation Failed")
-        raise ValueError("Processed Data Validation Failed")
+            # 3. Preprocessing
+            X = df.drop(columns=[self.target])
+            y = df[self.target]
 
-    logger.info("Processed Data Validation Passed")
+            preprocessor = preprocess_df(df)
 
-    # ----------------
-    X = df.drop(columns=[TARGET])
-    y = df[TARGET]
+            # Configure steps for DataFrame output
+            for name, step in preprocessor.named_steps.items():
+                if hasattr(step, "set_output"):
+                    step.set_output(transform="pandas")
 
-    x_train, x_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
-    )
+            X_processed = preprocessor.fit_transform(X)
+            logger.info(f"Preprocessing completed. Feature shape: {X_processed.shape}")
 
-    logger.info("Train Test Split Done")
+            # 4. Processed Data Validation
+            is_valid, report = processed_data_validation(X_processed)
+            if not is_valid:
+                logger.error(f"Processed data validation failed: {report}")
+                raise ValueError("Aborting pipeline due to invalid processed data.")
+            logger.info("Processed data validation passed.")
 
-    # ----------------
-    best_auc = -1
-    best_run_id = None
-    best_model_name = None
+            # 5. Train/Test Split
+            x_train, x_test, y_train, y_test = train_test_split(
+                X_processed, y, test_size=self.test_size, random_state=self.random_state
+            )
 
-    for name, model in models.items():
-        logger.info(f"Starting training for {name}")
+            # 6. Model Training & Evaluation
+            best_auc = -1
+            best_run_id = None
+            best_model_name = None
 
-        with mlflow.start_run(run_name=name) as run:
-            trained_model = train_model(model, x_train, y_train)
+            for name, model_obj in self.models.items():
+                with mlflow.start_run(run_name=name) as run:
+                    logger.info(f"Training {name}...")
+                    trained_model = train_model(model_obj, x_train, y_train)
 
-            y_pred = trained_model.predict(x_test)
-            y_proba = trained_model.predict_proba(x_test)[:, 1]
+                    y_pred = trained_model.predict(x_test)
+                    y_proba = trained_model.predict_proba(x_test)[:, 1]
+                    metrics = evaluate_model(y_test, y_pred, y_proba)
 
-            metrics = evaluate_model(y_test, y_pred, y_proba)
+                    # Log to MLflow
+                    mlflow.log_params(model_obj.get_params())
+                    mlflow.log_metrics(metrics)
+                    mlflow.sklearn.log_model(trained_model, artifact_path="model")
 
-            mlflow.log_param("model_name", name)
-            mlflow.log_metrics(metrics)
-            mlflow.sklearn.log_model(trained_model, artifact_path="model")
+                    logger.info(f"Model {name} Metrics: {metrics}")
 
-            if metrics["roc_auc"] > best_auc:
-                best_auc = metrics["roc_auc"]
-                best_run_id = run.info.run_id
-                best_model_name = name
+                    if metrics["roc_auc"] > best_auc:
+                        best_auc = metrics["roc_auc"]
+                        best_run_id = run.info.run_id
+                        best_model_name = name
 
-            logger.info(f"Finished training {name} | Metrics: {metrics}")
+            # 7. Model Registration
+            if best_run_id:
+                logger.info(
+                    f"Best model found: {best_model_name} (AUC: {best_auc:.4f})"
+                )
+                register_model(best_run_id, best_model_name, best_auc)
+            else:
+                logger.warning("No model was eligible for registration.")
 
-    logger.info("All models trained and logged to MLflow successfully!")
+            duration = time.time() - start_time
+            logger.info(f"Pipeline completed successfully in {duration:.2f} seconds.")
 
-    register_model(best_run_id, best_model_name, best_auc)
+        except Exception as e:
+            logger.exception(f"Pipeline failed with an unexpected error: {e}")
+            raise
 
 
 if __name__ == "__main__":
-    main()
+    pipeline = ChurnTrainingPipeline()
+    pipeline.run()
