@@ -124,64 +124,68 @@ class BasicPreprocessor(BaseEstimator, TransformerMixin):
         return X
 
 
-def preprocess_df(df):
+def get_preprocessor():
     """
-    Full preprocessing pipeline for the DataFrame.
+    Returns the unfitted preprocessing pipeline.
     """
     from sklearn.compose import ColumnTransformer
     from sklearn.impute import SimpleImputer
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+    numeric_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+
+    categorical_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore", sparse=False)),
+        ]
+    )
+
+    preprocessor = Pipeline(
+        [
+            ("basic", BasicPreprocessor()),
+            (
+                "columns",
+                ColumnTransformer(
+                    transformers=[
+                        (
+                            "num",
+                            numeric_pipeline,
+                            lambda X: X.select_dtypes(
+                                include=["int64", "float64"]
+                            ).columns,
+                        ),
+                        (
+                            "cat",
+                            categorical_pipeline,
+                            lambda X: X.select_dtypes(
+                                include=["object", "category"]
+                            ).columns,
+                        ),
+                    ]
+                ),
+            ),
+        ]
+    )
+    return preprocessor
+
+
+def preprocess_df(df):
+    """
+    Full preprocessing pipeline for the DataFrame.
+    """
     logger.info("Starting preprocessing pipeline.")
 
     try:
-        numeric_pipeline = Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-            ]
-        )
-        logger.info("Numeric pipeline created.")
-
-        categorical_pipeline = Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="most_frequent")),
-                ("onehot", OneHotEncoder(handle_unknown="ignore", sparse=False)),
-            ]
-        )
-        logger.info("Categorical pipeline created.")
-
-        preprocessor = Pipeline(
-            [
-                ("basic", BasicPreprocessor()),
-                (
-                    "columns",
-                    ColumnTransformer(
-                        transformers=[
-                            (
-                                "num",
-                                numeric_pipeline,
-                                lambda X: X.select_dtypes(
-                                    include=["int64", "float64"]
-                                ).columns,
-                            ),
-                            (
-                                "cat",
-                                categorical_pipeline,
-                                lambda X: X.select_dtypes(
-                                    include=["object", "category"]
-                                ).columns,
-                            ),
-                        ]
-                    ),
-                ),
-            ]
-        )
-
-        logger.info("Preprocessing pipelines created successfully.")
+        preprocessor = get_preprocessor()
+        processed_df = preprocessor.fit_transform(df)
+        logger.info("Preprocessing completed successfully.")
+        return processed_df
     except Exception as e:
-        logger.error(f"Error in creating pipelines: {e}")
+        logger.error(f"Error in preprocessing: {e}")
         raise e
-    processed_df = preprocessor.fit_transform(df)
-
-    return processed_df

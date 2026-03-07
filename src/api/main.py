@@ -16,12 +16,9 @@ from src.api.schemas import (
     PredictRequest,
     PredictResponse,
 )
-from src.data.preprocessor import BasicPreprocessor, preprocess_df
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-processor = BasicPreprocessor()
 
 
 class ModelManager:
@@ -125,11 +122,11 @@ def predict_endpoint(
 ):
     input_data = request.model_dump()
 
+    # Create DataFrame from input data
     input_df = pd.DataFrame([input_data])
 
-    processed_data = preprocess_df(input_df)
-
-    prediction, probability = predict(model, processed_data)
+    # Pass the raw DataFrame directly to the bundled model (Pipeline)
+    prediction, probability = predict(model, input_df)
 
     return PredictResponse(churn_risk_score=prediction, probability=probability)
 
@@ -140,9 +137,19 @@ def batch_predict_endpoint(
     model: Annotated[mlflow.pyfunc.PyFuncModel, Depends(get_model_instance)],
 ):
     input_data = [item.model_dump() for item in request.inputs]
+
+    # Create DataFrame from all inputs
+    input_df = pd.DataFrame(input_data)
+
+    # Batch predict using the bundled model
     predictions = []
-    for data in input_data:
-        prediction, probability = predict(model, data)
+    # Note: Our predictor.py currently handles single row predict at a time
+    # Actually, we should probably update predictor.py to handle batching properly
+    # or just loop here with single rows converted back to DFs.
+    # For now, let's keep it simple and loop.
+    for i in range(len(input_df)):
+        row_df = input_df.iloc[[i]]
+        prediction, probability = predict(model, row_df)
         predictions.append(
             PredictResponse(churn_risk_score=prediction, probability=probability)
         )

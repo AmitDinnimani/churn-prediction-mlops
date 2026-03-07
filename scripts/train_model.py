@@ -9,11 +9,9 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 from src.data.loader import load_data
-from src.data.preprocessor import preprocess_df
-from src.data.validator import processed_data_validation, raw_data_validation
+from src.data.validator import raw_data_validation
 from src.models.evaluate import evaluate_model
 from src.models.registry import register_model
-from src.models.train import train_model
 from src.utils.config import DATA_PATH
 from src.utils.logger import get_logger
 
@@ -76,50 +74,55 @@ class ChurnTrainingPipeline:
                 raise ValueError("Aborting pipeline due to invalid raw data.")
             logger.info("Raw data validation passed.")
 
-            # 3. Preprocessing
+            # 3. Preprocessing & Training
             X = df.drop(columns=[self.target])
             y = df[self.target]
 
-            preprocessor = preprocess_df(df)
+            from sklearn.pipeline import Pipeline
 
-            # Configure steps for DataFrame output
-            for name, step in preprocessor.named_steps.items():
-                if hasattr(step, "set_output"):
-                    step.set_output(transform="pandas")
+            from src.data.preprocessor import get_preprocessor
 
-            X_processed = preprocessor.fit_transform(X)
-            logger.info(f"Preprocessing completed. Feature shape: {X_processed.shape}")
-
-            # 4. Processed Data Validation
-            is_valid, report = processed_data_validation(X_processed)
-            if not is_valid:
-                logger.error(f"Processed data validation failed: {report}")
-                raise ValueError("Aborting pipeline due to invalid processed data.")
-            logger.info("Processed data validation passed.")
-
-            # 5. Train/Test Split
-            x_train, x_test, y_train, y_test = train_test_split(
-                X_processed, y, test_size=self.test_size, random_state=self.random_state
+            # 4. Train/Test Split
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=self.test_size, random_state=self.random_state
             )
 
-            # 6. Model Training & Evaluation
+            # 5. Model Training & Evaluation
             best_auc = -1
             best_run_id = None
             best_model_name = None
 
             for name, model_obj in self.models.items():
                 with mlflow.start_run(run_name=name) as run:
-                    logger.info(f"Training {name}...")
-                    trained_model = train_model(model_obj, x_train, y_train)
+                    logger.info(f"Training {name} as a unified pipeline...")
 
-                    y_pred = trained_model.predict(x_test)
-                    y_proba = trained_model.predict_proba(x_test)[:, 1]
+                    # Create a unified pipeline: Preprocessor + Model
+                    full_pipeline = Pipeline(
+                        [
+                            ("preprocessor", get_preprocessor()),
+                            ("classifier", model_obj),
+                        ]
+                    )
+
+                    # Configure steps for DataFrame output if supported
+                    # Note: We apply this to the nested preprocessor
+                    preprocessor_step = full_pipeline.named_steps["preprocessor"]
+                    for step_name, step in preprocessor_step.named_steps.items():
+                        if hasattr(step, "set_output"):
+                            step.set_output(transform="pandas")
+
+                    # Fit the entire pipeline
+                    full_pipeline.fit(X_train, y_train)
+
+                    # Evaluation
+                    y_pred = full_pipeline.predict(X_test)
+                    y_proba = full_pipeline.predict_proba(X_test)[:, 1]
                     metrics = evaluate_model(y_test, y_pred, y_proba)
 
                     # Log to MLflow
                     mlflow.log_params(model_obj.get_params())
                     mlflow.log_metrics(metrics)
-                    mlflow.sklearn.log_model(trained_model, artifact_path="model")
+                    mlflow.sklearn.log_model(full_pipeline, artifact_path="model")
 
                     logger.info(f"Model {name} Metrics: {metrics}")
 
