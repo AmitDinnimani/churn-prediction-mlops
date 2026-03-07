@@ -127,8 +127,7 @@ def predict_endpoint(
 
     input_df = pd.DataFrame([input_data])
 
-    processed_data = processor.transform(input_df)
-    processed_data = preprocess_df(processed_data)
+    processed_data = preprocess_df(input_df)
 
     prediction, probability = predict(model, processed_data)
 

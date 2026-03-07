@@ -182,4 +182,6 @@ def preprocess_df(df):
     except Exception as e:
         logger.error(f"Error in creating pipelines: {e}")
         raise e
-    return preprocessor
+    processed_df = preprocessor.fit_transform(df)
+
+    return processed_df
