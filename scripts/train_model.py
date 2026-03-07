@@ -87,31 +87,32 @@ class ChurnTrainingPipeline:
                 X, y, test_size=self.test_size, random_state=self.random_state
             )
 
-            # 5. Model Training & Evaluation
+            # 4. Model Training & Evaluation
             best_auc = -1
             best_run_id = None
             best_model_name = None
 
+            from src.data.preprocessor import BasicPreprocessor
+
             for name, model_obj in self.models.items():
                 with mlflow.start_run(run_name=name) as run:
-                    logger.info(f"Training {name} as a unified pipeline...")
+                    logger.info(f"Training {name} as a flat unified pipeline...")
 
-                    # Create a unified pipeline: Preprocessor + Model
+                    # Create a flat unified pipeline
                     full_pipeline = Pipeline(
                         [
-                            ("preprocessor", get_preprocessor()),
+                            ("basic", BasicPreprocessor()),
+                            ("columns", get_preprocessor()),
                             ("classifier", model_obj),
                         ]
                     )
 
-                    # Configure steps for DataFrame output if supported
-                    # Note: We apply this to the nested preprocessor
-                    preprocessor_step = full_pipeline.named_steps["preprocessor"]
-                    for step_name, step in preprocessor_step.named_steps.items():
-                        if hasattr(step, "set_output"):
-                            step.set_output(transform="pandas")
+                    # Configure Step Output as Pandas DataFrames
+                    if hasattr(full_pipeline, "set_output"):
+                        full_pipeline.set_output(transform="pandas")
 
-                    # Fit the entire pipeline
+                    # Fit the entire pipeline on RAW training data
+                    # (X_train/y_train are already raw from the split above)
                     full_pipeline.fit(X_train, y_train)
 
                     # Evaluation

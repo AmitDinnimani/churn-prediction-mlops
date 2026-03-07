@@ -30,6 +30,14 @@ def register_model(best_run_id, best_model_name, best_auc):
         client.transition_model_version_stage(
             name=model_name, version=result.version, stage="Production"
         )
+
+        # Set ROC-AUC as a tag for easy retrieval
+        client.set_model_version_tag(
+            name=model_name,
+            version=result.version,
+            key="roc_auc",
+            value=str(round(best_auc, 4)),
+        )
         logger.info(
             f"Successfully registered model version {result.version} in Production."
         )

@@ -10,6 +10,39 @@ TARGET = "churn_risk_score"
 
 logger = get_logger(__name__)
 
+# Features created/transformed by BasicPreprocessor
+NUMERIC_FEATURES = [
+    "age",
+    "days_since_last_login",
+    "avg_time_spent",
+    "avg_transaction_value",
+    "avg_frequency_login_days",
+    "points_in_wallet",
+    "customer_tenure_days",
+    "last_visit_hour",
+    "last_visit_dayofweek",
+    "login_gap_ratio",
+    "engagement_score",
+    "value_per_login",
+    "wallet_utilization",
+    "complaint_flag",
+]
+
+CATEGORICAL_FEATURES = [
+    "gender",
+    "region_category",
+    "membership_category",
+    "joined_through_referral",
+    "preferred_offer_types",
+    "medium_of_operation",
+    "internet_option",
+    "used_special_discount",
+    "offer_application_preference",
+    "past_complaint",
+    "complaint_status",
+    "feedback",
+]
+
 
 def fill_missing_values(df):
     """
@@ -92,7 +125,8 @@ def feature_engineering(df):
         )
 
         df["complaint_flag"] = (
-            (df["past_complaint"] == 1) & (df["complaint_status"] != "Resolved")
+            (df["past_complaint"].isin([1, "Yes"]))
+            & (df["complaint_status"] != "Resolved")
         ).astype(int)
 
         logger.info("Feature engineering completed successfully.")
@@ -111,6 +145,12 @@ class BasicPreprocessor(BaseEstimator, TransformerMixin):
 
     def __init__(self):
         pass
+
+    def set_output(self, transform=None):
+        """
+        Support for scikit-learn's set_output API.
+        """
+        return self
 
     def fit(self, X, y=None):
         return self
@@ -146,33 +186,17 @@ def get_preprocessor():
         ]
     )
 
-    preprocessor = Pipeline(
-        [
-            ("basic", BasicPreprocessor()),
-            (
-                "columns",
-                ColumnTransformer(
-                    transformers=[
-                        (
-                            "num",
-                            numeric_pipeline,
-                            lambda X: X.select_dtypes(
-                                include=["int64", "float64"]
-                            ).columns,
-                        ),
-                        (
-                            "cat",
-                            categorical_pipeline,
-                            lambda X: X.select_dtypes(
-                                include=["object", "category"]
-                            ).columns,
-                        ),
-                    ]
-                ),
-            ),
-        ]
+    column_transformer = ColumnTransformer(
+        transformers=[
+            ("num", numeric_pipeline, NUMERIC_FEATURES),
+            ("cat", categorical_pipeline, CATEGORICAL_FEATURES),
+        ],
+        verbose_feature_names_out=False,  # Don't prefix with num__ or cat__
     )
-    return preprocessor
+
+    # Note: We return just the transformer steps that need to be in the main pipeline
+    # The 'basic' step and 'columns' step will be part of the final flat pipeline.
+    return column_transformer
 
 
 def preprocess_df(df):

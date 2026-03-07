@@ -1,9 +1,10 @@
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 import mlflow.pyfunc
+import mlflow.sklearn
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
 from mlflow.tracking import MlflowClient
@@ -43,7 +44,7 @@ class ModelManager:
                     f"Attempting to load model '{self.model_name}' from {self.stage} stage (Attempt {i+1})..."
                 )
                 model_uri = f"models:/{self.model_name}/{self.stage}"
-                self.model = mlflow.pyfunc.load_model(model_uri)
+                self.model = mlflow.sklearn.load_model(model_uri)
 
                 # Cache version info for /model_info
                 versions = client.get_latest_versions(
@@ -134,7 +135,7 @@ def predict_endpoint(
 @app.post("/batch_predict", response_model=BatchPredictResponse)
 def batch_predict_endpoint(
     request: BatchPredictRequest,
-    model: Annotated[mlflow.pyfunc.PyFuncModel, Depends(get_model_instance)],
+    model: Annotated[Any, Depends(get_model_instance)],
 ):
     input_data = [item.model_dump() for item in request.inputs]
 
@@ -142,18 +143,15 @@ def batch_predict_endpoint(
     input_df = pd.DataFrame(input_data)
 
     # Batch predict using the bundled model
-    predictions = []
+    results = []
     # Note: Our predictor.py currently handles single row predict at a time
-    # Actually, we should probably update predictor.py to handle batching properly
-    # or just loop here with single rows converted back to DFs.
-    # For now, let's keep it simple and loop.
     for i in range(len(input_df)):
         row_df = input_df.iloc[[i]]
         prediction, probability = predict(model, row_df)
-        predictions.append(
+        results.append(
             PredictResponse(churn_risk_score=prediction, probability=probability)
         )
-    return BatchPredictResponse(predictions=predictions)
+    return BatchPredictResponse(results=results)
 
 
 @app.get("/model_info", response_model=ModelInfoResponse)
@@ -161,16 +159,12 @@ def model_info():
     if not model_manager.model_version_info:
         raise HTTPException(status_code=404, detail="Model metadata not available")
 
-    client = MlflowClient()
     version_info = model_manager.model_version_info
-    tags = client.get_model_version_tags(
-        name=version_info.name, version=version_info.version
-    )
 
     return ModelInfoResponse(
         model_name=version_info.name,
         stage=version_info.current_stage,
-        version=version_info.version,
+        version=int(version_info.version),
         run_id=version_info.run_id,
-        roc_auc=float(tags.get("roc_auc", 0.0)),
+        roc_auc=float(version_info.tags.get("roc_auc", 0.0)),
     )

@@ -101,6 +101,7 @@ services:
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       PYTHONPATH: /app
+      GIT_PYTHON_REFRESH: "quiet"
     restart: on-failure
 
 volumes:
