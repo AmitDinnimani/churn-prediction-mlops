@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import mlflow.pyfunc
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
 from mlflow.tracking import MlflowClient
 
@@ -15,9 +16,12 @@ from src.api.schemas import (
     PredictRequest,
     PredictResponse,
 )
+from src.data.preprocessor import BasicPreprocessor, preprocess_df
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+processor = BasicPreprocessor()
 
 
 class ModelManager:
@@ -120,7 +124,14 @@ def predict_endpoint(
     model: Annotated[mlflow.pyfunc.PyFuncModel, Depends(get_model_instance)],
 ):
     input_data = request.model_dump()
-    prediction, probability = predict(model, input_data)
+
+    input_df = pd.DataFrame([input_data])
+
+    processed_data = processor.transform(input_df)
+    processed_data = preprocess_df(processed_data)
+
+    prediction, probability = predict(model, processed_data)
+
     return PredictResponse(churn_risk_score=prediction, probability=probability)
 
 
