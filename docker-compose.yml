@@ -79,6 +79,7 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/app/data
+      - mlflow_artifacts:/mlflow/artifacts      
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       PYTHONPATH: /app
@@ -95,6 +96,8 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       PYTHONPATH: /app
