@@ -68,7 +68,6 @@ churn-prediction-mlops/
 │   └── run_inference.py          # Ad-hoc inference script
 │
 ├── docker/                       # Containerization configurations
-│   ├── docker-compose.yml        # Orchestration for MLflow & Postgres
 │   └── Dockerfile.api            # API service container
 │
 ├── configs/                      # Pipeline and model configurations
